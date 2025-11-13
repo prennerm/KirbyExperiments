@@ -1,0 +1,17 @@
+# k_v1: Baseline PPO training for Kirby's Dream Land
+# Equivalent to Pokemon v1 (non-recurrent PPO)
+
+extends: base.yaml
+
+paths:
+  session_root: "experiments/kirby/k_v1"
+
+num_cpu: 4
+
+env:
+  module: "kirby_gym_env"
+  class: "KirbyGymEnv"
+
+model:
+  type: "PPO"
+  policy: "CnnPolicy"  # Changed from MultiInputPolicy - observation is now pure pixel array

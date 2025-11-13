@@ -1,0 +1,49 @@
+# Base configuration for Kirby's Dream Land training
+# All variant configs extend this file
+
+paths:
+  session_root: "experiments/kirby"
+
+seed: 42
+
+# Environment configuration
+env:
+  gb_path: "data/kirbys_dream_land.gb"
+  init_state: "data/kirby_init.state"  # Starts directly in Level 1 gameplay
+  headless: true
+  session_path: null  # Set dynamically by train.py
+  action_freq: 24
+  max_steps: 10240  # ~170 seconds at 60 FPS with action_freq=24
+  save_final_state: true
+  print_rewards: false
+  save_video: false
+  fast_video: false
+  reward_scale: 1.0
+  emulation_speed: 6  # For interactive use only
+
+# Training configuration
+num_cpu: 1
+total_timesteps: 50000000  # 50M steps (Kirby is faster to train than Pokemon)
+save_freq: 102400  # Save checkpoint every 100k steps
+save_freq_stats: 100  # Log stats every 100 iterations
+
+# Model configuration (base defaults)
+model:
+  learning_rate: 0.0001
+  gamma: 0.998
+  gae_lambda: 0.95
+  clip_range: 0.1
+  clip_range_vf: 0.1
+  ent_coef: 0.01
+  vf_coef: 0.5
+  max_grad_norm: 0.5
+  batch_size: 512
+  n_epochs: 3
+  verbose: 1
+  device: "auto"  # Use CUDA if available
+
+# Logging configuration
+logging:
+  format: "csv"  # "json" or "csv"
+  structured: true
+  verbose: 1
