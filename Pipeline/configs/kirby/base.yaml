@@ -22,10 +22,10 @@ env:
   emulation_speed: 6  # For interactive use only
 
 # Training configuration
-num_cpu: 1
-total_timesteps: 50000000  # 50M steps (Kirby is faster to train than Pokemon)
-save_freq: 102400  # Save checkpoint every 100k steps
-save_freq_stats: 100  # Log stats every 100 iterations
+num_cpu: 16
+total_timesteps: 100000000  # 100M steps (~12-15h target runtime)
+save_freq: 1310720  # ~40 rollouts (n_steps*num_cpu) -> ~40 min checkpoints
+save_freq_stats: 327680  # 10 rollouts per stats chunk (~10 min)
 
 # Model configuration (base defaults)
 model:
@@ -37,8 +37,9 @@ model:
   ent_coef: 0.01
   vf_coef: 0.5
   max_grad_norm: 0.5
-  batch_size: 512
-  n_epochs: 3
+  n_steps: 2048
+  batch_size: 1024
+  n_epochs: 4
   verbose: 1
   device: "auto"  # Use CUDA if available
 

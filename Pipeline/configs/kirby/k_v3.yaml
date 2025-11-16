@@ -4,15 +4,14 @@ extends: base.yaml
 paths:
   session_root: "experiments/kirby/k_v3"
 
-num_cpu: 4
-
 env:
   module: "kirby_gym_env"
   class: "KirbyGymEnv"
 
 model:
   type: "RecurrentPPOLD"
+  policy: "CnnLstmPolicyLD"
   ld_coef: 0.1
   n_steps: 2048
-  batch_size: 512
+  batch_size: 1024
   n_epochs: 4
