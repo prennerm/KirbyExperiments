@@ -48,6 +48,7 @@ class KirbyGymEnv(Env):
     RAM_GAME_STATE = 0xD02C
     RAM_BOSS_HEALTH = 0xD093
     RAM_SCROLL_X = 0xD053
+    WARPSTAR_STATE = 0x06
 
     def __init__(self, config=None):
         super().__init__()
@@ -74,9 +75,14 @@ class KirbyGymEnv(Env):
         self.reward_scale = config.get("reward_scale", 1.0)
         self.score_weight = 0.01
         self.progress_weight = 0.1
-        self.level_complete_reward = 1000
-        self.death_penalty = 100
-        self.time_penalty = 0.01
+        self.level_complete_reward = config.get("warpstar_reward", 1000)
+        self.boss_hit_reward = config.get("boss_hit_reward", 100)
+        self.boss_defeat_reward = config.get("boss_defeat_reward", 1000)
+        self.standstill_penalty = config.get("standstill_penalty", 1.0)
+        self.backtrack_penalty = config.get("backtrack_penalty", 1.0)
+        self.edge_reward = config.get("edge_reward", 5.0)
+        self.death_penalty = config.get("death_penalty", 1000)
+        self.time_penalty = config.get("time_penalty", 0.01)
 
         # Action space: 8 buttons
         self.valid_actions = [
@@ -131,6 +137,7 @@ class KirbyGymEnv(Env):
         # Episode stats
         self.step_count = 0
         self.episode_reward = 0
+        self.agent_stats = []
 
     def reset(self, seed=None, options=None):
         """Reset environment to initial state."""
@@ -141,17 +148,19 @@ class KirbyGymEnv(Env):
             with open(self.init_state, "rb") as f:
                 self.pyboy.load_state(f)
         else:
-            # Reset emulator (starts from ROM boot)
-            self.pyboy.reset()
-            # Skip intro sequence (TODO: implement or use init_state)
-            for _ in range(300):  # ~5 seconds at 60 FPS
-                self.pyboy.tick()
+            reset_fn = getattr(self.pyboy, "reset_game", None) or getattr(self.pyboy, "reset", None)
+            if callable(reset_fn):
+                reset_fn()
+            else:
+                for _ in range(300):
+                    self.pyboy.tick()
 
         # Reset tracking variables
         self.recent_screens = np.zeros(self.output_shape, dtype=np.uint8)
         self.recent_actions = np.zeros(self.frame_stacks, dtype=np.uint8)
         self.step_count = 0
         self.episode_reward = 0
+        self.agent_stats = []
         self.reset_count += 1
 
         # Read initial game state
@@ -159,6 +168,9 @@ class KirbyGymEnv(Env):
         self.prev_x = self._read_x_position()
         self.prev_lives = self._read_lives()
         self.max_x_position = self.prev_x
+        self.prev_level_progress = self._read_level_progress()
+        self.prev_boss_health = self._read_boss_health()
+        self.prev_game_state = self._read_game_state()
 
         return self._get_obs(), {}
 
@@ -186,10 +198,16 @@ class KirbyGymEnv(Env):
         current_x = self._read_x_position()
         current_lives = self._read_lives()
         current_health = self._read_health()
+        current_progress = self._read_level_progress()
+        current_boss_health = self._read_boss_health()
+        current_game_state = self._read_game_state()
+        boss_active = current_boss_health > 0
 
         # Calculate reward components
         score_delta = current_score - self.prev_score
         x_progress = max(0, current_x - self.max_x_position)
+        progress_delta = current_progress - self.prev_level_progress
+        boss_health_delta = self.prev_boss_health - current_boss_health
         died = (current_lives < self.prev_lives)
 
         # Update max position
@@ -199,11 +217,32 @@ class KirbyGymEnv(Env):
         # Reward calculation
         reward = 0
         reward += score_delta * self.score_weight
-        reward += x_progress * self.progress_weight
+        reward += max(0, progress_delta) * self.progress_weight
         reward -= self.time_penalty
+
+        if progress_delta <= 0 and not boss_active:
+            reward -= self.standstill_penalty
+
+        if progress_delta < 0 and not boss_active:
+            reward -= self.backtrack_penalty
+
+        if current_boss_health < self.prev_boss_health:
+            reward += self.boss_hit_reward
+
+        if current_boss_health == 0 and self.prev_boss_health > 0:
+            reward += self.boss_defeat_reward
+
+        if current_game_state == self.WARPSTAR_STATE and self.prev_game_state != self.WARPSTAR_STATE:
+            reward += self.level_complete_reward
 
         if died:
             reward -= self.death_penalty
+
+        if not boss_active:
+            if current_x == 76:
+                reward += self.edge_reward
+            elif current_x == 68:
+                reward -= self.edge_reward
 
         # Episode termination conditions
         self.step_count += 1
@@ -223,6 +262,9 @@ class KirbyGymEnv(Env):
         self.prev_score = current_score
         self.prev_x = current_x
         self.prev_lives = current_lives
+        self.prev_level_progress = current_progress
+        self.prev_boss_health = current_boss_health
+        self.prev_game_state = current_game_state
 
         # Apply reward scale
         reward *= self.reward_scale
@@ -236,11 +278,23 @@ class KirbyGymEnv(Env):
 
         info = {
             "score": current_score,
+            "score_delta": score_delta,
             "x_position": current_x,
+            "level_progress": current_progress,
+            "progress_delta": progress_delta,
             "lives": current_lives,
             "health": current_health,
+            "boss_health": current_boss_health,
+            "boss_health_delta": boss_health_delta,
+            "game_state": current_game_state,
+            "warpstar": current_game_state == self.WARPSTAR_STATE,
+            "boss_active": boss_active,
+            "died": died,
             "episode_reward": self.episode_reward,
+            "worker": self.worker_rank,
+            "step_count": self.step_count,
         }
+        self._append_agent_stats(action, reward, info)
 
         return self._get_obs(), reward, terminated, truncated, info
 
@@ -252,6 +306,30 @@ class KirbyGymEnv(Env):
         """Clean up resources."""
         if hasattr(self, 'pyboy'):
             self.pyboy.stop()
+
+    def _append_agent_stats(self, action, reward, info):
+        """Collect per-step stats for offline logging."""
+        stat = {
+            "step": info.get("step_count", self.step_count),
+            "last_action": int(action),
+            "reward_step": float(reward),
+            "reward_total": float(self.episode_reward),
+            "score": int(info.get("score", 0)),
+            "score_delta": int(info.get("score_delta", 0)),
+            "x_position": int(info.get("x_position", 0)),
+            "level_progress": int(info.get("level_progress", 0)),
+            "level_progress_delta": int(info.get("progress_delta", 0)),
+            "boss_health": int(info.get("boss_health", 0)),
+            "boss_health_delta": int(info.get("boss_health_delta", 0)),
+            "game_state": int(info.get("game_state", 0)),
+            "warpstar": bool(info.get("warpstar", False)),
+            "boss_active": bool(info.get("boss_active", False)),
+            "died": bool(info.get("died", False)),
+            "lives": int(info.get("lives", 0)),
+            "health": int(info.get("health", 0)),
+            "worker": int(info.get("worker", self.worker_rank)),
+        }
+        self.agent_stats.append(stat)
 
     # ========================================================================
     # RAM Reading Helpers
@@ -285,6 +363,26 @@ class KirbyGymEnv(Env):
     def _read_game_state(self):
         """Read game state byte (0x01=normal, 0x06=dying)."""
         return self.pyboy.memory[self.RAM_GAME_STATE]
+
+    def _read_boss_health(self):
+        """Read boss HP."""
+        return self.pyboy.memory[self.RAM_BOSS_HEALTH]
+
+    def _read_level_progress(self):
+        """Approximate absolute progress across the level."""
+        scroll_x = self.pyboy.memory[self.RAM_SCROLL_X]
+        kirby_x = self.pyboy.memory[self.RAM_KIRBY_X]
+        fine_offset = 0
+        manager = getattr(self.pyboy, "botsupport_manager", None)
+        if callable(manager):
+            try:
+                screen = manager().screen()
+                tilemap = screen.tilemap_position_list()
+                scx = tilemap[16][0]
+                fine_offset = (scx - 7) % 16
+            except Exception:
+                fine_offset = 0
+        return scroll_x * 16 + fine_offset + kirby_x
 
     # ========================================================================
     # Observation Helpers

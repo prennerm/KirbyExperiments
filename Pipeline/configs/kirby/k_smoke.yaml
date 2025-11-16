@@ -1,0 +1,13 @@
+extends: k_v1.yaml
+
+# Short configuration for sanity checks / automation
+run_label: smoke
+
+num_cpu: 1
+
+env:
+  action_freq: 24
+
+save_freq: 512
+save_freq_stats: 128
+total_timesteps: 2048
