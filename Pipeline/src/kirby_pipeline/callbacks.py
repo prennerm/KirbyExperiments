@@ -164,6 +164,12 @@ class StatsCallback(BaseCallback):
     def _flush(self, *, final: bool = False) -> None:
         if not self.current_stats:
             return
+        metrics_source = getattr(self.model, "latest_train_metrics", None)
+        if isinstance(metrics_source, dict):
+            training_snapshot = _normalise_stat(metrics_source)
+            if training_snapshot:
+                for row in self.current_stats:
+                    row.setdefault("training", training_snapshot)
         self.writer.write_chunk(self.current_stats, final=final)
         if self.verbose:
             label = "final" if final else f"batch ({len(self.current_stats)} entries)"

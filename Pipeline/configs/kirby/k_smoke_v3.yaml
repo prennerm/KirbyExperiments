@@ -1,0 +1,11 @@
+extends: k_v3.yaml
+
+run_label: smoke_v3
+num_cpu: 1
+
+env:
+  action_freq: 24
+
+save_freq: 512
+save_freq_stats: 128
+total_timesteps: 4096

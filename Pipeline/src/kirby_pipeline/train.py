@@ -15,11 +15,15 @@ import yaml
 from stable_baselines3 import PPO
 from stable_baselines3.common.callbacks import CallbackList, CheckpointCallback
 from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv
+from sb3_contrib import RecurrentPPO
 
 from kirby_pipeline.callbacks import StatsCallback
+from kirby_pipeline.ppo_lambda_discrepancy import CnnLstmPolicyLD, RecurrentPPOLD
 
 MODEL_REGISTRY = {
     "PPO": PPO,
+    "RecurrentPPO": RecurrentPPO,
+    "RecurrentPPOLD": RecurrentPPOLD,
 }
 
 
@@ -121,12 +125,21 @@ def select_model_class(model_type: str):
 
 def prepare_model_config(model_cfg: Dict[str, Any], env_conf: Dict[str, Any], num_cpu: int) -> Dict[str, Any]:
     cfg = dict(model_cfg)
-    policy = cfg.pop("policy", "CnnPolicy")
     type_name = cfg.pop("type", "PPO")
+    policy = cfg.pop("policy", None)
     max_steps = int(env_conf.get("max_steps", 1024))
     if "n_steps" not in cfg:
         calculated = max(1, max_steps // max(1, num_cpu))
         cfg["n_steps"] = min(calculated, 2048)
+    if policy is None:
+        if type_name == "RecurrentPPOLD":
+            policy = CnnLstmPolicyLD
+        elif type_name == "RecurrentPPO":
+            policy = "CnnLstmPolicy"
+        else:
+            policy = "CnnPolicy"
+    elif isinstance(policy, str) and policy == "CnnLstmPolicyLD":
+        policy = CnnLstmPolicyLD
     return {"policy": policy, "type": type_name, "kwargs": cfg}
 
 

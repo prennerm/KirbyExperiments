@@ -1,0 +1,18 @@
+# k_v3: Recurrent PPO + Lambda Discrepancy for Kirby
+extends: base.yaml
+
+paths:
+  session_root: "experiments/kirby/k_v3"
+
+num_cpu: 4
+
+env:
+  module: "kirby_gym_env"
+  class: "KirbyGymEnv"
+
+model:
+  type: "RecurrentPPOLD"
+  ld_coef: 0.1
+  n_steps: 2048
+  batch_size: 512
+  n_epochs: 4
