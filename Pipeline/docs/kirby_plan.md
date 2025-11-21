@@ -18,6 +18,7 @@
 - Extend our StatsCallback to capture info["level_progress"], info["boss_hp"], info["game_state"].
 - Update visualization scripts to plot level progress and boss health (similar to PyBoy-RL reward plots).
 - Use the additional fields in reward plots to highlight warpstar events / boss transitions.
+- **Neu (Nov 2025):** Der Action Space nutzt jetzt eine kuratierte Menge aus Einzel- und Zwei-Tasten-Kombinationen (z.B. Right, Jump, Right+Jump, B+Down, Start, Select), sodass der Agent realistisch mehrere Buttons gleichzeitig drücken kann.
 
 ## 2. Mid-term Experiments
 
@@ -70,3 +71,4 @@
 - **Entrypoint**: `python -m kirby_pipeline.train --variant k_v1 --config configs/kirby/k_v1.yaml` (or `k_smoke` for short tests). Resolved configs get archived beside logs/checkpoints.
 - **Artifacts produced**: `logs/stats_*.csv` with the new metrics, checkpoints every `save_freq`, TensorBoard traces, and optional plots via `plot_kirby_stats.py`.
 - **Open issues**: reward plots need better temporal coverage/smoothing; documentation for manual testing/plot usage should be expanded; action-space/boss-mode experiments remain TODO.
+

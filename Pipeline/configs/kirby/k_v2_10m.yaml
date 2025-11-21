@@ -1,0 +1,4 @@
+extends: k_v2.yaml
+
+run_label: v2_10m
+total_timesteps: 10000000
