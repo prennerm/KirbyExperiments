@@ -19,6 +19,7 @@
 - Update visualization scripts to plot level progress and boss health (similar to PyBoy-RL reward plots).
 - Use the additional fields in reward plots to highlight warpstar events / boss transitions.
 - **Neu (Nov 2025):** Der Action Space nutzt jetzt eine kuratierte Menge aus Einzel- und Zwei-Tasten-Kombinationen (z.B. Right, Jump, Right+Jump, B+Down, Start, Select), sodass der Agent realistisch mehrere Buttons gleichzeitig drücken kann.
+- **Neu (Nov 2025, Update 2):** Alle PPO-Varianten schreiben ihre Trainingsmetriken (`train/clip_fraction`, `train/approx_kl`, `train/policy_loss`, `train/value_loss`, `train/entropy_loss`, `train/loss`, `train/explained_variance`) direkt in die `stats_*.csv`; LD-spezifische Felder (`training.ld.*`) kommen bei k_v3 zusätzlich dazu.
 
 ## 2. Mid-term Experiments
 
@@ -72,3 +73,6 @@
 - **Artifacts produced**: `logs/stats_*.csv` with the new metrics, checkpoints every `save_freq`, TensorBoard traces, and optional plots via `plot_kirby_stats.py`.
 - **Open issues**: reward plots need better temporal coverage/smoothing; documentation for manual testing/plot usage should be expanded; action-space/boss-mode experiments remain TODO.
 
+
+### Status Update – 2025-11-22
+- **Training Metrics Logging:** Die Modelle PPOWithMetrics, RecurrentPPOWithMetrics und RecurrentPPOLD füllen `latest_train_metrics` mit allen TensorBoard-Metriken (clip_fraction, approx_kl, policy/value/entropy loss, total loss, explained_variance). Die Stats-CSV enthält dadurch einheitliche `train/*`-Spalten für k_v1–k_v3; `scripts/analyze_run_stats.py` zeigt keine `n/a` mehr.

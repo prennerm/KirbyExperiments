@@ -7,6 +7,7 @@ RAM addresses sourced from: https://datacrystal.tcrf.net/wiki/Kirby%27s_Dream_La
 """
 import uuid
 from pathlib import Path
+from itertools import permutations
 import numpy as np
 from skimage.transform import downscale_local_mean
 from gymnasium import Env, spaces
@@ -25,7 +26,7 @@ class KirbyGymEnv(Env):
         - score: Current score (normalized)
 
     Action Space:
-        Discrete(8): Down, Up, Left, Right, A, B, Start, Select
+        Discrete(N): curated set of single buttons and two-button combos
 
     Reward Components:
         - score_delta: Points gained (encourages item collection, enemy defeat)
@@ -73,38 +74,51 @@ class KirbyGymEnv(Env):
 
         # Reward weights
         self.reward_scale = config.get("reward_scale", 1.0)
-        self.score_weight = 0.01
-        self.progress_weight = 0.1
-        self.level_complete_reward = config.get("warpstar_reward", 1000)
-        self.boss_hit_reward = config.get("boss_hit_reward", 100)
-        self.boss_defeat_reward = config.get("boss_defeat_reward", 1000)
-        self.standstill_penalty = config.get("standstill_penalty", 1.0)
-        self.backtrack_penalty = config.get("backtrack_penalty", 1.0)
-        self.edge_reward = config.get("edge_reward", 5.0)
-        self.death_penalty = config.get("death_penalty", 1000)
-        self.time_penalty = config.get("time_penalty", 0.01)
+        self.score_weight = config.get("score_weight", 0.001)
+        self.progress_weight = config.get("progress_weight", 0.02)
+        self.level_complete_reward = config.get("warpstar_reward", 100)
+        self.boss_hit_reward = config.get("boss_hit_reward", 10)
+        self.boss_defeat_reward = config.get("boss_defeat_reward", 50)
+        self.standstill_penalty = config.get("standstill_penalty", 0.05)
+        self.backtrack_penalty = config.get("backtrack_penalty", 0.1)
+        self.edge_reward = config.get("edge_reward", 1.0)
+        self.death_penalty = config.get("death_penalty", 100)
+        self.time_penalty = config.get("time_penalty", 0.001)
+        self.reward_clip = config.get("reward_clip", 5.0)
 
-        # Action space: 8 buttons
-        self.valid_actions = [
-            WindowEvent.PRESS_ARROW_DOWN,
-            WindowEvent.PRESS_ARROW_UP,
-            WindowEvent.PRESS_ARROW_LEFT,
+        # Action space: singles + selected two-button combos
+        combo_sources = [
             WindowEvent.PRESS_ARROW_RIGHT,
+            WindowEvent.PRESS_ARROW_LEFT,
+            WindowEvent.PRESS_ARROW_UP,
+            WindowEvent.PRESS_ARROW_DOWN,
             WindowEvent.PRESS_BUTTON_A,
             WindowEvent.PRESS_BUTTON_B,
+        ]
+        single_only = [
             WindowEvent.PRESS_BUTTON_START,
             WindowEvent.PRESS_BUTTON_SELECT,
         ]
 
+        self.press_to_release = {
+            WindowEvent.PRESS_ARROW_DOWN: WindowEvent.RELEASE_ARROW_DOWN,
+            WindowEvent.PRESS_ARROW_UP: WindowEvent.RELEASE_ARROW_UP,
+            WindowEvent.PRESS_ARROW_LEFT: WindowEvent.RELEASE_ARROW_LEFT,
+            WindowEvent.PRESS_ARROW_RIGHT: WindowEvent.RELEASE_ARROW_RIGHT,
+            WindowEvent.PRESS_BUTTON_A: WindowEvent.RELEASE_BUTTON_A,
+            WindowEvent.PRESS_BUTTON_B: WindowEvent.RELEASE_BUTTON_B,
+            WindowEvent.PRESS_BUTTON_START: WindowEvent.RELEASE_BUTTON_START,
+            WindowEvent.PRESS_BUTTON_SELECT: WindowEvent.RELEASE_BUTTON_SELECT,
+        }
+
+        action_combos = [(btn,) for btn in combo_sources]
+        action_combos.extend(permutations(combo_sources, 2))
+        action_combos.extend((btn,) for btn in single_only)
+
+        self.valid_actions = action_combos
         self.release_actions = [
-            WindowEvent.RELEASE_ARROW_DOWN,
-            WindowEvent.RELEASE_ARROW_UP,
-            WindowEvent.RELEASE_ARROW_LEFT,
-            WindowEvent.RELEASE_ARROW_RIGHT,
-            WindowEvent.RELEASE_BUTTON_A,
-            WindowEvent.RELEASE_BUTTON_B,
-            WindowEvent.RELEASE_BUTTON_START,
-            WindowEvent.RELEASE_BUTTON_SELECT,
+            tuple(self.press_to_release[event] for event in reversed(combo))
+            for combo in action_combos
         ]
 
         self.action_space = spaces.Discrete(len(self.valid_actions))
@@ -180,13 +194,15 @@ class KirbyGymEnv(Env):
         self.recent_actions = np.roll(self.recent_actions, 1)
         self.recent_actions[0] = action
 
-        # Press button
-        self.pyboy.send_input(self.valid_actions[action])
+        # Press buttons for selected action (can be single or combo)
+        for press_event in self.valid_actions[action]:
+            self.pyboy.send_input(press_event)
 
         for i in range(self.act_freq):
             # Release button after first frame (realistic input timing)
             if i == 8:
-                self.pyboy.send_input(self.release_actions[action])
+                for release_event in self.release_actions[action]:
+                    self.pyboy.send_input(release_event)
 
             self.pyboy.tick()
 
@@ -268,6 +284,8 @@ class KirbyGymEnv(Env):
 
         # Apply reward scale
         reward *= self.reward_scale
+        if self.reward_clip is not None:
+            reward = float(np.clip(reward, -self.reward_clip, self.reward_clip))
         self.episode_reward += reward
 
         # Print rewards if enabled

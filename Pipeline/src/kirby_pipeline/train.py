@@ -12,17 +12,16 @@ from typing import Any, Callable, Dict, List, Optional
 import numpy as np
 import torch
 import yaml
-from stable_baselines3 import PPO
 from stable_baselines3.common.callbacks import CallbackList, CheckpointCallback
 from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv
-from sb3_contrib import RecurrentPPO
 
 from kirby_pipeline.callbacks import StatsCallback
 from kirby_pipeline.ppo_lambda_discrepancy import CnnLstmPolicyLD, RecurrentPPOLD
+from kirby_pipeline.ppo_with_metrics import PPOWithMetrics, RecurrentPPOWithMetrics
 
 MODEL_REGISTRY = {
-    "PPO": PPO,
-    "RecurrentPPO": RecurrentPPO,
+    "PPO": PPOWithMetrics,
+    "RecurrentPPO": RecurrentPPOWithMetrics,
     "RecurrentPPOLD": RecurrentPPOLD,
 }
 

@@ -61,6 +61,16 @@ def flatten_dict(data: Dict[str, Any], prefix: str = "") -> Dict[str, Any]:
     return flattened
 
 
+def _inject_training_scalars(target: Dict[str, Any], training_metrics: Dict[str, Any]) -> None:
+    """Expose selected training metrics on the same level as other stats."""
+    flat_metrics = flatten_dict(training_metrics)
+    for key, value in flat_metrics.items():
+        if "." in key:
+            continue
+        # Overwrite so fresh metrics always win
+        target[key] = value
+
+
 class StatsCallback(BaseCallback):
     """Collects per-step stats from environments and writes them to disk."""
 
@@ -92,6 +102,9 @@ class StatsCallback(BaseCallback):
     def _on_step(self) -> bool:
         return True
 
+    def _on_rollout_start(self) -> None:
+        self._flush_ready_batches()
+
     def _on_rollout_end(self) -> None:
         stats_lists = self.training_env.get_attr("agent_stats")
         for env_idx, env_stats in enumerate(stats_lists):
@@ -101,11 +114,9 @@ class StatsCallback(BaseCallback):
                 prepared = self._prepare_stat(raw, env_idx)
                 self.current_stats.append(prepared)
         self.training_env.set_attr("agent_stats", [])
-        if len(self.current_stats) >= self.save_freq:
-            self._flush()
 
     def _on_training_end(self) -> None:
-        self._flush(final=True)
+        self._flush_ready_batches(final=True)
         self.writer.close()
 
     def _prepare_stat(self, raw_stats: Dict[str, Any], env_idx: int) -> Dict[str, Any]:
@@ -119,6 +130,7 @@ class StatsCallback(BaseCallback):
             training_metrics = _normalise_stat(metrics_source)
             if training_metrics:
                 normalised["training"] = training_metrics
+                _inject_training_scalars(normalised, training_metrics)
 
         if not self.structured:
             return normalised
@@ -159,22 +171,39 @@ class StatsCallback(BaseCallback):
         }
         if training_metrics:
             structured["training"] = training_metrics
+            _inject_training_scalars(structured, training_metrics)
         return structured
 
-    def _flush(self, *, final: bool = False) -> None:
-        if not self.current_stats:
+    def _flush_ready_batches(self, *, final: bool = False) -> None:
+        if final:
+            while len(self.current_stats) > self.save_freq:
+                batch = self.current_stats[: self.save_freq]
+                self.current_stats = self.current_stats[self.save_freq :]
+                self._flush(batch=batch)
+            self._flush(final=True)
+            return
+        while len(self.current_stats) >= self.save_freq:
+            batch = self.current_stats[: self.save_freq]
+            self.current_stats = self.current_stats[self.save_freq :]
+            self._flush(batch=batch)
+
+    def _flush(self, *, final: bool = False, batch: Optional[List[Dict[str, Any]]] = None) -> None:
+        target = batch if batch is not None else self.current_stats
+        if not target:
             return
         metrics_source = getattr(self.model, "latest_train_metrics", None)
         if isinstance(metrics_source, dict):
             training_snapshot = _normalise_stat(metrics_source)
             if training_snapshot:
-                for row in self.current_stats:
+                for row in target:
                     row.setdefault("training", training_snapshot)
-        self.writer.write_chunk(self.current_stats, final=final)
+                    _inject_training_scalars(row, training_snapshot)
+        self.writer.write_chunk(target, final=final)
         if self.verbose:
-            label = "final" if final else f"batch ({len(self.current_stats)} entries)"
+            label = "final" if final else f"batch ({len(target)} entries)"
             print(f"[StatsCallback] wrote {label} to {self.save_path}")
-        self.current_stats = []
+        if batch is None:
+            self.current_stats = []
 
 
 def _normalise_stat(payload: Any) -> Any:

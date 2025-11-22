@@ -161,6 +161,14 @@ When implementing Kirby environments, refer to these Pokemon Pipeline files:
 # Change: "badges", "seen_pokemon" → "score", "lives"
 ```
 
+### Trainingsmetriken im Stats-Log
+
+- Jeder Run legt unter `experiments/kirby/<run>/logs/` gestückelte `stats_*.csv` sowie ein finales `stats_final.csv` ab. Die Dateien enthalten jetzt nicht nur `progress.*`, `boss.*` und `reward.*`, sondern auch die Trainingsmetriken aller PPO-Varianten:
+  - `train/clip_fraction`, `train/approx_kl`, `train/policy_loss`, `train/value_loss`, `train/entropy_loss`, `train/loss`, `train/explained_variance`
+  - flache Alias-Spalten (`clip_fraction`, `policy_loss`, `value_loss`, …) plus verschachtelte Einträge wie `training.loss.total`
+- Die Werte stammen aus `self.latest_train_metrics` der Modelle (PPO, RecurrentPPO, RecurrentPPOLD) und werden bei jedem Flush vom `StatsCallback` in jede Zeile kopiert.
+- Zur Auswertung kannst du `python scripts/analyze_run_stats.py --runs <run-dir> --bins 10` nutzen; das Skript erzeugt `statistics.txt` mit globalen und binweisen Mittelwerten für Progress- und Trainingsmetriken.
+
 ### Lambda Discrepancy (Copy 1:1)
 
 **File:** `../../PokemonRedExperiments/Pipeline/src/poke_pipeline/ppo_lambda_discrepancy.py`

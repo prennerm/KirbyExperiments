@@ -10,6 +10,9 @@ import torch.nn.functional as F
 
 from sb3_contrib.ppo_recurrent.ppo_recurrent import RecurrentPPO
 from sb3_contrib.ppo_recurrent.policies import CnnLstmPolicy
+from stable_baselines3.common.utils import explained_variance
+
+from .training_metrics import build_training_metrics_snapshot
 
 
 class CnnLstmPolicyLD(CnnLstmPolicy):
@@ -84,6 +87,7 @@ class RecurrentPPOLD(RecurrentPPO):
         clip_range = self.clip_range(self._current_progress_remaining)
 
         entropy_losses, pg_losses, mc_losses, ld_losses = [], [], [], []
+        clip_fractions, approx_kl_divs, total_losses = [], [], []
 
         for _ in range(self.n_epochs):
             for rollout_data in self.rollout_buffer.get(self.batch_size):
@@ -96,10 +100,12 @@ class RecurrentPPOLD(RecurrentPPO):
                 )
                 mc_values = mc_values.flatten()
                 ld_values = ld_values.flatten()
+                log_prob = log_prob.flatten()
 
                 old_values = rollout_data.old_values.flatten()
                 returns = rollout_data.returns.flatten()
                 episode_starts = rollout_data.episode_starts.float().flatten()
+                old_log_prob = rollout_data.old_log_prob.flatten()
 
                 not_start = 1.0 - episode_starts
                 next_not_start = th.cat(
@@ -119,15 +125,18 @@ class RecurrentPPOLD(RecurrentPPO):
                 ld_targets = (td0_targets - old_values).detach()
 
                 advantages = rollout_data.advantages.flatten()
-                ratio = th.exp(
-                    log_prob.flatten() - rollout_data.old_log_prob.flatten()
-                )
+                ratio = th.exp(log_prob - old_log_prob)
                 policy_loss = -th.mean(
                     th.min(
                         advantages * ratio,
                         advantages * th.clamp(ratio, 1 - clip_range, 1 + clip_range),
                     )
                 )
+                clip_fraction = th.mean((th.abs(ratio - 1) > clip_range).float()).item()
+                clip_fractions.append(clip_fraction)
+                log_ratio = log_prob - old_log_prob
+                approx_kl_div = th.mean(((th.exp(log_ratio) - 1) - log_ratio)).item()
+                approx_kl_divs.append(approx_kl_div)
 
                 mc_loss = F.mse_loss(mc_values, returns)
                 ld_loss = F.l1_loss(ld_values, ld_targets)
@@ -143,17 +152,32 @@ class RecurrentPPOLD(RecurrentPPO):
                 ld_term = ld_loss.item()
                 ld_component = self.ld_coef * ld_term
                 total_loss = loss.item()
+                total_losses.append(total_loss)
                 ld_ratio = ld_component / (abs(total_loss) + 1e-8)
-                self.latest_train_metrics = {
+                policy_value = float(policy_loss.item())
+                mc_value = float(mc_loss.item())
+                ld_value = float(ld_loss.item())
+                entropy_value = float(ent_loss.item())
+                extras = {
                     "ld": {
                         "term": float(ld_term),
                         "component": float(ld_component),
                         "ratio": float(ld_ratio),
                     },
-                    "loss": {
-                        "total": float(total_loss),
-                    },
+                    "ld_loss": ld_value,
+                    "train/ld_loss": ld_value,
+                    "train/ld_ratio": float(ld_ratio),
                 }
+                train_snapshot = build_training_metrics_snapshot(
+                    policy_loss=policy_value,
+                    value_loss=mc_value,
+                    entropy_loss=entropy_value,
+                    approx_kl=float(approx_kl_div),
+                    clip_fraction=float(clip_fraction),
+                    total_loss=float(total_loss),
+                    extras=extras,
+                )
+                self.latest_train_metrics = train_snapshot
 
                 self.policy.optimizer.zero_grad()
                 loss.backward()
@@ -169,6 +193,12 @@ class RecurrentPPOLD(RecurrentPPO):
         self.logger.record("train/mc_loss", np.mean(mc_losses))
         self.logger.record("train/ld_loss", np.mean(ld_losses))
         self.logger.record("train/entropy_loss", np.mean(entropy_losses))
+        if clip_fractions:
+            self.logger.record("train/clip_fraction", np.mean(clip_fractions))
+        if approx_kl_divs:
+            self.logger.record("train/approx_kl", np.mean(approx_kl_divs))
+        if total_losses:
+            self.logger.record("train/loss", np.mean(total_losses))
 
         if ld_losses:
             with th.no_grad():
@@ -181,6 +211,13 @@ class RecurrentPPOLD(RecurrentPPO):
                 self.logger.record(
                     "train/bootstrap_vs_mc_ratio", td0_mean / (mc_mean + 1e-8)
                 )
+        explained_var = explained_variance(
+            self.rollout_buffer.values.flatten(), self.rollout_buffer.returns.flatten()
+        )
+        self.logger.record("train/explained_variance", explained_var)
+        if self.latest_train_metrics:
+            self.latest_train_metrics["explained_variance"] = float(explained_var)
+            self.latest_train_metrics["train/explained_variance"] = float(explained_var)
 
         self._n_updates += self.n_epochs
 

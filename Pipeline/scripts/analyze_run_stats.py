@@ -31,6 +31,13 @@ def _fmt(series: pd.Series | None, func, fmt: str) -> str:
     return fmt.format(value)
 
 
+def _pick_series(df: pd.DataFrame, *candidates: str) -> pd.Series | None:
+    for column in candidates:
+        if column in df.columns:
+            return df[column]
+    return None
+
+
 def summarize_run(run_dir: Path, df: pd.DataFrame, num_bins: int) -> str:
     summary: List[str] = []
     summary.append(f"Run: {run_dir}")
@@ -41,17 +48,20 @@ def summarize_run(run_dir: Path, df: pd.DataFrame, num_bins: int) -> str:
     summary.append(f"Warpstar Hits: {int(df['status.warpstar'].sum())}")
 
     optional_globals = [
-        ("clip_fraction", "Clip fraction Ø={mean:.3f} / max={max:.3f}"),
-        ("entropy_loss", "Entropy loss Ø={mean:.2f} / min={min:.2f} / max={max:.2f}"),
-        ("training.loss.total", "Training loss Ø={mean:.3f}"),
-        ("training.policy_loss", "Policy loss Ø={mean:.5f}"),
-        ("training.mc_loss", "Value loss Ø={mean:.3f}"),
-        ("training.ld_loss", "LD loss Ø={mean:.5f}"),
-        ("training.approx_kl", "Approx KL Ø={mean:.5f}"),
+        (("train/clip_fraction", "clip_fraction", "training.clip_fraction"), "Clip fraction Ø={mean:.3f} / max={max:.3f}"),
+        (
+            ("train/entropy_loss", "entropy_loss", "training.entropy_loss"),
+            "Entropy loss Ø={mean:.2f} / min={min:.2f} / max={max:.2f}",
+        ),
+        (("train/loss", "training.loss.total"), "Training loss Ø={mean:.3f}"),
+        (("train/policy_loss", "training.policy_loss"), "Policy loss Ø={mean:.5f}"),
+        (("train/mc_loss", "train/value_loss", "training.mc_loss"), "Value loss Ø={mean:.3f}"),
+        (("train/ld_loss", "training.ld_loss"), "LD loss Ø={mean:.5f}"),
+        (("train/approx_kl", "approx_kl", "training.approx_kl"), "Approx KL Ø={mean:.5f}"),
     ]
-    for column, template in optional_globals:
-        if column in df.columns:
-            series = df[column]
+    for columns, template in optional_globals:
+        series = _pick_series(df, *columns)
+        if series is not None:
             summary.append(
                 template.format(
                     mean=series.mean(),
@@ -68,12 +78,10 @@ def summarize_run(run_dir: Path, df: pd.DataFrame, num_bins: int) -> str:
         if bin_df.empty:
             continue
         pct = (bin_df[sort_key].iloc[-1] / total_last) * 100 if total_last else 0
-        clip_series = bin_df["clip_fraction"] if "clip_fraction" in bin_df.columns else None
-        entropy_series = bin_df["entropy_loss"] if "entropy_loss" in bin_df.columns else None
-        train_loss_series = bin_df["training.loss.total"] if "training.loss.total" in bin_df.columns else None
-        train_policy_series = (
-            bin_df["training.policy_loss"] if "training.policy_loss" in bin_df.columns else None
-        )
+        clip_series = _pick_series(bin_df, "train/clip_fraction", "clip_fraction", "training.clip_fraction")
+        entropy_series = _pick_series(bin_df, "train/entropy_loss", "entropy_loss", "training.entropy_loss")
+        train_loss_series = _pick_series(bin_df, "train/loss", "training.loss.total")
+        train_policy_series = _pick_series(bin_df, "train/policy_loss", "training.policy_loss")
         line = (
             f"Bin {idx:02d} (~{pct:.1f}%): "
             f"progress_mean={bin_df['progress.level'].mean():.1f}, "
