@@ -18,11 +18,11 @@ python -m kirby_pipeline.train --variant k_v1 --config configs/kirby/k_v1.yaml
 
 ## Repo Layout
 
-- `src/kirby_pipeline/` – env, policies, training entry point
-- `configs/kirby/` – base config + variant overrides
-- `experiments/kirby/` – checkpoints, CSV stats, TensorBoard logs
-- `scripts/` – helper tools (stats analyzer, watch_agent, ROM tests)
-- `run_kirby_batch.bat` – sequential run for k_v1 → k_v3
+- `src/kirby_pipeline/` - env, policies, training entry point
+- `configs/kirby/` - base config plus variant overrides
+- `experiments/kirby/` - checkpoints, CSV stats, TensorBoard logs
+- `scripts/` - helper tools (stats analyzer, watch_agent, ROM tests)
+- `run_kirby_batch.bat` - sequential run for k_v1 -> k_v3
 
 ## Status
 
