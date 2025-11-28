@@ -76,7 +76,8 @@ class KirbyGymEnv(Env):
         self.reward_scale = config.get("reward_scale", 1.0)
         self.score_weight = config.get("score_weight", 0.001)
         self.progress_weight = config.get("progress_weight", 0.02)
-        self.level_complete_reward = config.get("warpstar_reward", 100)
+        self.level_complete_reward = config.get("warpstar_reward", 20)
+        self.warpstar_reset_progress = config.get("warpstar_reset_progress", 200)
         self.boss_hit_reward = config.get("boss_hit_reward", 10)
         self.boss_defeat_reward = config.get("boss_defeat_reward", 50)
         self.standstill_penalty = config.get("standstill_penalty", 0.05)
@@ -185,6 +186,7 @@ class KirbyGymEnv(Env):
         self.prev_level_progress = self._read_level_progress()
         self.prev_boss_health = self._read_boss_health()
         self.prev_game_state = self._read_game_state()
+        self.warpstar_locked = False
 
         return self._get_obs(), {}
 
@@ -248,8 +250,17 @@ class KirbyGymEnv(Env):
         if current_boss_health == 0 and self.prev_boss_health > 0:
             reward += self.boss_defeat_reward
 
-        if current_game_state == self.WARPSTAR_STATE and self.prev_game_state != self.WARPSTAR_STATE:
+        if self.warpstar_locked:
+            if current_game_state != self.WARPSTAR_STATE and current_progress < self.warpstar_reset_progress:
+                self.warpstar_locked = False
+
+        if (
+            current_game_state == self.WARPSTAR_STATE
+            and self.prev_game_state != self.WARPSTAR_STATE
+            and not self.warpstar_locked
+        ):
             reward += self.level_complete_reward
+            self.warpstar_locked = True
 
         if died:
             reward -= self.death_penalty

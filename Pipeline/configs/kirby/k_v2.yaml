@@ -4,6 +4,8 @@ extends: base.yaml
 paths:
   session_root: "experiments/kirby/k_v2"
 
+total_timesteps: 10000000
+
 env:
   module: "kirby_gym_env"
   class: "KirbyGymEnv"

@@ -12,6 +12,8 @@ from typing import List
 import numpy as np
 import pandas as pd
 
+DEFAULT_VARIANTS = ["k_v1", "k_v2", "k_v3"]
+
 
 def load_stats(run_dir: Path) -> pd.DataFrame:
     pattern = run_dir / "logs" / "stats_*.csv"
@@ -107,11 +109,31 @@ def summarize_run(run_dir: Path, df: pd.DataFrame, num_bins: int) -> str:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Kirby-Logs analysieren.")
-    parser.add_argument("--runs", nargs="+", required=True, help="Run-Verzeichnisse (mit logs/).")
+    parser.add_argument("--runs", nargs="+", help="Run-Verzeichnisse (mit logs/).")
     parser.add_argument("--bins", type=int, default=10, help="Anzahl Intervalle pro Run.")
     args = parser.parse_args()
 
-    for run_path in args.runs:
+    run_paths = args.runs
+    if not run_paths:
+        base_root = Path("experiments") / "kirby"
+        run_paths = []
+        for variant in DEFAULT_VARIANTS:
+            root = base_root / variant
+            if not root.exists():
+                print(f"[WARN] Verzeichnis nicht gefunden: {root}")
+                continue
+            candidates = [p for p in root.iterdir() if p.is_dir()]
+            if not candidates:
+                print(f"[WARN] Keine Run-Verzeichnisse unter {root}")
+                continue
+            latest = max(candidates, key=lambda entry: entry.stat().st_mtime)
+            print(f"[INFO] Verwende neuesten Run für {variant}: {latest}")
+            run_paths.append(str(latest))
+        if not run_paths:
+            print("[ERROR] Keine Runs gefunden. Bitte --runs angeben.")
+            return
+
+    for run_path in run_paths:
         run_dir = Path(run_path).resolve()
         try:
             df = load_stats(run_dir)

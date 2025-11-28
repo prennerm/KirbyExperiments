@@ -74,3 +74,5 @@ Thumbs.db
 *.bak
 *.swp
 *~
+Pipeline/docs/
+PyBoy-RL-main/

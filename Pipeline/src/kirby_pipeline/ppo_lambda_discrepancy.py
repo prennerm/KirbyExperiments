@@ -88,8 +88,10 @@ class RecurrentPPOLD(RecurrentPPO):
 
         entropy_losses, pg_losses, mc_losses, ld_losses = [], [], [], []
         clip_fractions, approx_kl_divs, total_losses = [], [], []
+        continue_training = True
+        epochs_done = 0
 
-        for _ in range(self.n_epochs):
+        for epoch in range(self.n_epochs):
             for rollout_data in self.rollout_buffer.get(self.batch_size):
                 actions = rollout_data.actions.long().flatten()
                 mc_values, ld_values, log_prob, entropy = self.policy.evaluate_actions(
@@ -179,6 +181,12 @@ class RecurrentPPOLD(RecurrentPPO):
                 )
                 self.latest_train_metrics = train_snapshot
 
+                if self.target_kl is not None and approx_kl_div > 1.5 * self.target_kl:
+                    continue_training = False
+                    if self.verbose >= 1:
+                        print(f"Early stopping at step {epoch} due to reaching max kl: {approx_kl_div:.2f}")
+                    break
+
                 self.policy.optimizer.zero_grad()
                 loss.backward()
                 nn.utils.clip_grad_norm_(self.policy.parameters(), self.max_grad_norm)
@@ -188,6 +196,10 @@ class RecurrentPPOLD(RecurrentPPO):
                 mc_losses.append(mc_loss.item())
                 ld_losses.append(ld_loss.item())
                 entropy_losses.append(ent_loss.item())
+
+            epochs_done += 1
+            if not continue_training:
+                break
 
         self.logger.record("train/policy_loss", np.mean(pg_losses))
         self.logger.record("train/mc_loss", np.mean(mc_losses))
@@ -219,7 +231,7 @@ class RecurrentPPOLD(RecurrentPPO):
             self.latest_train_metrics["explained_variance"] = float(explained_var)
             self.latest_train_metrics["train/explained_variance"] = float(explained_var)
 
-        self._n_updates += self.n_epochs
+        self._n_updates += epochs_done
 
 
 __all__ = ["CnnLstmPolicyLD", "RecurrentPPOLD"]
