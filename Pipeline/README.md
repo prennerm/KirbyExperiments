@@ -1,73 +1,29 @@
-# Kirby's Dream Land RL Training Pipeline
+# Kirby's Dream Land RL Pipeline
 
-Reinforcement Learning training pipeline for Kirby's Dream Land (Game Boy) using PyBoy emulator and Stable-Baselines3.
-
-## Project Context
-
-This project trains RL agents to play Kirby's Dream Land using:
-- **PPO** (Baseline, v1)
-- **RecurrentPPO** with LSTM (v3)
-- **RecurrentPPO + Lambda Discrepancy** (v4)
-
-**Goal:** Validate Lambda Discrepancy method on a simpler, faster-training environment than Pokemon Red.
+Playground for PPO variants (feed-forward, recurrent, LD) that learn Kirby's Dream Land via PyBoy + Stable-Baselines3. The repo intentionally stays lightweight while we iterate.
 
 ## Quick Start
 
 ```bash
-# 1. Setup environment
 conda env create -f environment.yml
 conda activate kirby_env
-
-# 2. Install package
 pip install -e .
 
-# 3. Place ROM
-# Download Kirby's Dream Land ROM (see docs/KIRBY_SETUP.md)
-cp /path/to/kirbys_dream_land.gb data/
+cp /path/to/kirbys_dream_land.gb data/   # bring your own ROM
+python scripts/verify_rom.py             # optional ROM sanity check
 
-# 4. Verify ROM
-python scripts/verify_rom.py
-
-# 5. Test PyBoy
-python scripts/test_manual_play.py
-
-# 6. Start training
+# train one variant (configs/kirby/*)
 python -m kirby_pipeline.train --variant k_v1 --config configs/kirby/k_v1.yaml
 ```
 
-## Project Structure
+## Repo Layout
 
-```
-Pipeline/
-├── src/kirby_pipeline/     # Source code
-│   ├── envs/               # Gym environments
-│   ├── train.py            # Training script
-│   ├── run_all.py          # Agent playback
-│   └── callbacks.py        # Logging
-├── configs/kirby/          # Training configs
-├── experiments/kirby/      # Training results
-├── data/                   # ROM & save states
-├── docs/                   # Documentation
-└── tests/                  # Unit tests
-```
+- `src/kirby_pipeline/` – env, policies, training entry point
+- `configs/kirby/` – base config + variant overrides
+- `experiments/kirby/` – checkpoints, CSV stats, TensorBoard logs
+- `scripts/` – helper tools (stats analyzer, watch_agent, ROM tests)
+- `run_kirby_batch.bat` – sequential run for k_v1 → k_v3
 
-## Documentation
+## Status
 
-- **[Setup Guide](docs/KIRBY_SETUP.md)** - Complete setup instructions
-- **[RAM Addresses](docs/RAM_ADDRESSES.md)** - Memory locations for game state
-- **[Reward Design](docs/REWARD_DESIGN.md)** - Reward shaping rationale
-- **[Learnings](docs/LEARNINGS.md)** - What works/doesn't work
-- **[TODO](docs/TODO.md)** - Open tasks
-
-## Related Projects
-
-This project is based on the [Pokemon Red RL Pipeline](../PokemonRedExperiments/Pipeline/).
-
-Key differences:
-- Simpler game (linear levels vs open world)
-- Faster training (50M vs 2B+ steps)
-- Different reward structure (score/progress vs badges/events)
-
-## License
-
-Research project for Master's Thesis. ROM not included (obtain legally).
+Currently tuned for tens of millions of PPO steps while we refine KL handling and rewards. Expect rapid changes.
