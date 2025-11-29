@@ -1,5 +1,7 @@
 # Kirby's Dream Land RL Pipeline
 
+> **Hinweis:** Die Reward-Logik (insbesondere Warpstar-Events) wird gerade überarbeitet. Aktuelle Runs dienen der Fehlersuche; Metriken können deshalb noch stark variieren.
+
 Playground for PPO variants (feed-forward, recurrent, LD) that learn Kirby's Dream Land via PyBoy + Stable-Baselines3. The repo intentionally stays lightweight while we iterate.
 
 ## Quick Start
